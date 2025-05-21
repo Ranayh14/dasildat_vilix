@@ -109,24 +109,53 @@
 
       <?php
       if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['model'])) {
+          $data_input = [
+              'Menit ke Transportasi Umum' => $_POST['metro'],
+              'Luas Total (m²)' => $_POST['area'],
+              'Luas Ruang Tamu & Kamar Tidur (m²)' => $_POST['living_area'],
+              'Luas Dapur (m²)' => $_POST['kitchen_area'],
+              'Lantai' => $_POST['floor'],
+              'Jumlah Lantai Gedung' => $_POST['num_floors'],
+              'Jumlah Kamar' => $_POST['num_rooms'],
+              'Tipe Apartemen' => $_POST['apt_type'] == 'New building' ? 'Bangunan Baru' : 'Bangunan Lama',
+              'Renovasi' => $_POST['renovation'] == 'yes' ? 'Ya' : 'Tidak',
+              'Model yang Dipilih' => match ($_POST['model']) {
+                  'DT' => 'Decision Tree',
+                  'RF' => 'Random Forest',
+                  'KNN' => 'K-Nearest Neighbor',
+                  default => 'Tidak Diketahui'
+              }
+          ];
+
           $args = [
-            escapeshellarg($_POST['model']),
-            'manual',
-            escapeshellarg($_POST['metro']),
-            escapeshellarg($_POST['area']),
-            escapeshellarg($_POST['living_area']),
-            escapeshellarg($_POST['kitchen_area']),
-            escapeshellarg($_POST['floor']),
-            escapeshellarg($_POST['num_floors']),
-            escapeshellarg($_POST['num_rooms']),
-            escapeshellarg($_POST['apt_type']),
-            escapeshellarg($_POST['renovation'])
+              escapeshellarg($_POST['model']),
+              'manual',
+              escapeshellarg($_POST['metro']),
+              escapeshellarg($_POST['area']),
+              escapeshellarg($_POST['living_area']),
+              escapeshellarg($_POST['kitchen_area']),
+              escapeshellarg($_POST['floor']),
+              escapeshellarg($_POST['num_floors']),
+              escapeshellarg($_POST['num_rooms']),
+              escapeshellarg($_POST['apt_type']),
+              escapeshellarg($_POST['renovation'])
           ];
           $arg_string = implode(' ', $args);
           $cmd = "python predict.py $arg_string";
           $output = shell_exec($cmd);
 
-          echo "<div class='mt-6 bg-green-800 text-green-100 p-4 rounded'>
+          // Tampilkan data input
+          echo "<div class='mt-6 bg-gray-800 text-gray-100 p-4 rounded'>
+                  <h4 class='text-lg font-semibold mb-2'>Data Input:</h4>
+                  <ul class='list-disc pl-5 space-y-1'>";
+          foreach ($data_input as $key => $value) {
+              echo "<li><strong>$key:</strong> $value</li>";
+          }
+          echo "  </ul>
+                </div>";
+
+          // Tampilkan hasil prediksi
+          echo "<div class='mt-4 bg-green-800 text-green-100 p-4 rounded'>
                   <strong>Hasil Prediksi Harga:</strong> Rp " . number_format($output, 0, ',', '.') . "
                 </div>";
       }
