@@ -32,6 +32,9 @@
 <!-- Header -->
 <header class="bg-gradient-to-r from-indigo-700 to-purple-900 py-10 shadow-md text-center">
   <h1 class="text-4xl md:text-5xl font-bold text-white">Prediksi Harga Apartemen</h1>
+  <a href="history.php" class="inline-block mt-4 px-6 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-700 transition duration-200">
+    Lihat History & Perbandingan Model
+  </a>
 </header>
 
 <main class="flex-grow fade-in">
@@ -101,6 +104,18 @@
           </select>
         </div>
 
+        <!-- Upload File CSV -->
+        <div class="mt-6">
+          <label class="block mb-1 font-medium text-white">Upload File CSV (Opsional)</label>
+          <input type="file" name="csv_file" accept=".csv" class="w-full text-sm text-gray-400
+            file:mr-4 file:py-2 file:px-4
+            file:rounded-md file:border-0
+            file:text-sm file:font-semibold
+            file:bg-indigo-600 file:text-white
+            hover:file:bg-indigo-700">
+          <p class="mt-1 text-sm text-gray-400">Format CSV harus sesuai dengan kolom yang diperlukan</p>
+        </div>
+
         <!-- Tombol Submit -->
         <button type="submit" class="bg-indigo-600 text-white px-6 py-2 rounded hover:bg-indigo-700 transition duration-200">
           Prediksi Harga
@@ -108,56 +123,135 @@
       </form>
 
       <?php
-      if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['model'])) {
-          $data_input = [
-              'Menit ke Transportasi Umum' => $_POST['metro'],
-              'Luas Total (m²)' => $_POST['area'],
-              'Luas Ruang Tamu & Kamar Tidur (m²)' => $_POST['living_area'],
-              'Luas Dapur (m²)' => $_POST['kitchen_area'],
-              'Lantai' => $_POST['floor'],
-              'Jumlah Lantai Gedung' => $_POST['num_floors'],
-              'Jumlah Kamar' => $_POST['num_rooms'],
-              'Tipe Apartemen' => $_POST['apt_type'] == 'New building' ? 'Bangunan Baru' : 'Bangunan Lama',
-              'Renovasi' => $_POST['renovation'] == 'yes' ? 'Ya' : 'Tidak',
-              'Model yang Dipilih' => match ($_POST['model']) {
-                  'DT' => 'Decision Tree',
-                  'RF' => 'Random Forest',
-                  'KNN' => 'K-Nearest Neighbor',
-                  default => 'Tidak Diketahui'
+      if ($_SERVER['REQUEST_METHOD'] == 'POST') {
+          // Handle CSV file upload
+          if (isset($_FILES['csv_file']) && $_FILES['csv_file']['error'] == 0) {
+              $file = $_FILES['csv_file'];
+              $file_ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+              
+              if ($file_ext == 'csv') {
+                  $upload_dir = 'uploads/';
+                  if (!file_exists($upload_dir)) {
+                      mkdir($upload_dir, 0777, true);
+                  }
+                  
+                  $file_path = $upload_dir . basename($file['name']);
+                  if (move_uploaded_file($file['tmp_name'], $file_path)) {
+                      // Process CSV file with Python script
+                      $model = escapeshellarg($_POST['model']);
+                      $cmd = "python predict.py $model csv " . escapeshellarg($file_path);
+                      $output = shell_exec($cmd);
+                      
+                      // Save predictions to database
+                      require_once 'config/database.php';
+                      
+                      // Read CSV file
+                      $file = fopen($file_path, 'r');
+                      $headers = fgetcsv($file); // Skip header row
+                      
+                      while (($row = fgetcsv($file)) !== FALSE) {
+                          $stmt = $pdo->prepare("INSERT INTO predictions (metro_minutes, area, living_area, kitchen_area, floor, num_floors, num_rooms, apartment_type, renovation, predicted_price, model_used) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                          $stmt->execute([
+                              $row[0], // Minutes to metro
+                              $row[1], // Area
+                              $row[2], // Living area
+                              $row[3], // Kitchen area
+                              $row[4], // Floor
+                              $row[5], // Number of floors
+                              $row[6], // Number of rooms
+                              $row[7], // Apartment type
+                              $row[8], // Renovation
+                              $output,
+                              $_POST['model']
+                          ]);
+                      }
+                      fclose($file);
+                      
+                      echo "<div class='mt-4 bg-green-800 text-green-100 p-4 rounded'>
+                              <strong>Hasil Prediksi dari File CSV:</strong><br>
+                              <pre class='mt-2'>$output</pre>
+                            </div>";
+                  } else {
+                      echo "<div class='mt-4 bg-red-800 text-red-100 p-4 rounded'>
+                              <strong>Error:</strong> Gagal mengupload file
+                            </div>";
+                  }
+              } else {
+                  echo "<div class='mt-4 bg-red-800 text-red-100 p-4 rounded'>
+                          <strong>Error:</strong> File harus berformat CSV
+                        </div>";
               }
-          ];
-
-          $args = [
-              escapeshellarg($_POST['model']),
-              'manual',
-              escapeshellarg($_POST['metro']),
-              escapeshellarg($_POST['area']),
-              escapeshellarg($_POST['living_area']),
-              escapeshellarg($_POST['kitchen_area']),
-              escapeshellarg($_POST['floor']),
-              escapeshellarg($_POST['num_floors']),
-              escapeshellarg($_POST['num_rooms']),
-              escapeshellarg($_POST['apt_type']),
-              escapeshellarg($_POST['renovation'])
-          ];
-          $arg_string = implode(' ', $args);
-          $cmd = "python predict.py $arg_string";
-          $output = shell_exec($cmd);
-
-          // Tampilkan data input
-          echo "<div class='mt-6 bg-gray-800 text-gray-100 p-4 rounded'>
-                  <h4 class='text-lg font-semibold mb-2'>Data Input:</h4>
-                  <ul class='list-disc pl-5 space-y-1'>";
-          foreach ($data_input as $key => $value) {
-              echo "<li><strong>$key:</strong> $value</li>";
           }
-          echo "  </ul>
-                </div>";
+          
+          // Handle manual input
+          if (isset($_POST['model'])) {
+              $data_input = [
+                  'Menit ke Transportasi Umum' => $_POST['metro'],
+                  'Luas Total (m²)' => $_POST['area'],
+                  'Luas Ruang Tamu & Kamar Tidur (m²)' => $_POST['living_area'],
+                  'Luas Dapur (m²)' => $_POST['kitchen_area'],
+                  'Lantai' => $_POST['floor'],
+                  'Jumlah Lantai Gedung' => $_POST['num_floors'],
+                  'Jumlah Kamar' => $_POST['num_rooms'],
+                  'Tipe Apartemen' => $_POST['apt_type'] == 'New building' ? 'Bangunan Baru' : 'Bangunan Lama',
+                  'Renovasi' => $_POST['renovation'] == 'yes' ? 'Ya' : 'Tidak',
+                  'Model yang Dipilih' => match ($_POST['model']) {
+                      'DT' => 'Decision Tree',
+                      'RF' => 'Random Forest',
+                      'KNN' => 'K-Nearest Neighbor',
+                      default => 'Tidak Diketahui'
+                  }
+              ];
 
-          // Tampilkan hasil prediksi
-          echo "<div class='mt-4 bg-green-800 text-green-100 p-4 rounded'>
-                  <strong>Hasil Prediksi Harga:</strong> Rp " . number_format($output, 0, ',', '.') . "
-                </div>";
+              $args = [
+                  escapeshellarg($_POST['model']),
+                  'manual',
+                  escapeshellarg($_POST['metro']),
+                  escapeshellarg($_POST['area']),
+                  escapeshellarg($_POST['living_area']),
+                  escapeshellarg($_POST['kitchen_area']),
+                  escapeshellarg($_POST['floor']),
+                  escapeshellarg($_POST['num_floors']),
+                  escapeshellarg($_POST['num_rooms']),
+                  escapeshellarg($_POST['apt_type']),
+                  escapeshellarg($_POST['renovation'])
+              ];
+              $arg_string = implode(' ', $args);
+              $cmd = "python predict.py $arg_string";
+              $output = shell_exec($cmd);
+
+              // Save prediction to database
+              require_once 'config/database.php';
+              $stmt = $pdo->prepare("INSERT INTO predictions (metro_minutes, area, living_area, kitchen_area, floor, num_floors, num_rooms, apartment_type, renovation, predicted_price, model_used) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+              $stmt->execute([
+                  $_POST['metro'],
+                  $_POST['area'],
+                  $_POST['living_area'],
+                  $_POST['kitchen_area'],
+                  $_POST['floor'],
+                  $_POST['num_floors'],
+                  $_POST['num_rooms'],
+                  $_POST['apt_type'],
+                  $_POST['renovation'],
+                  $output,
+                  $_POST['model']
+              ]);
+
+              // Tampilkan data input
+              echo "<div class='mt-6 bg-gray-800 text-gray-100 p-4 rounded'>
+                      <h4 class='text-lg font-semibold mb-2'>Data Input:</h4>
+                      <ul class='list-disc pl-5 space-y-1'>";
+              foreach ($data_input as $key => $value) {
+                  echo "<li><strong>$key:</strong> $value</li>";
+              }
+              echo "  </ul>
+                    </div>";
+
+              // Tampilkan hasil prediksi
+              echo "<div class='mt-4 bg-green-800 text-green-100 p-4 rounded'>
+                      <strong>Hasil Prediksi Harga:</strong> Rp " . number_format($output, 0, ',', '.') . "
+                    </div>";
+          }
       }
       ?>
     </div>
