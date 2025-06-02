@@ -5,9 +5,58 @@ require_once 'config/database.php';
 $stmt = $pdo->query("SELECT * FROM predictions ORDER BY prediction_date DESC LIMIT 50");
 $predictions = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-// Get model metrics
-$stmt = $pdo->query("SELECT * FROM model_metrics ORDER BY update_date DESC LIMIT 1");
-$metrics = $stmt->fetchAll(PDO::FETCH_ASSOC);
+// Get data for calculating metrics
+$stmt = $pdo->query("SELECT predicted_price, actual_price, model_used FROM predictions WHERE actual_price IS NOT NULL");
+$metric_data = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+// Calculate metrics per model
+$metrics = [];
+$model_data = [];
+foreach ($metric_data as $row) {
+    if (!isset($model_data[$row['model_used']])) {
+        $model_data[$row['model_used']] = ['predictions' => [], 'actuals' => []];
+    }
+    $model_data[$row['model_used']]['predictions'][] = (float) $row['predicted_price'];
+    $model_data[$row['model_used']]['actuals'][] = (float) $row['actual_price'];
+}
+
+foreach ($model_data as $model_name => $data) {
+    $n = count($data['predictions']);
+    if ($n == 0) continue;
+
+    // Calculate MSE
+    $mse = 0;
+    for ($i = 0; $i < $n; $i++) {
+        $mse += pow($data['predictions'][$i] - $data['actuals'][$i], 2);
+    }
+    $mse /= $n;
+
+    // Calculate MAE
+    $mae = 0;
+    for ($i = 0; $i < $n; $i++) {
+        $mae += abs($data['predictions'][$i] - $data['actuals'][$i]);
+    }
+    $mae /= $n;
+
+    // Calculate R2 Score
+    $mean_actual = array_sum($data['actuals']) / $n;
+    $total_sum_squares = 0;
+    $residual_sum_squares = 0;
+    for ($i = 0; $i < $n; $i++) {
+        $total_sum_squares += pow($data['actuals'][$i] - $mean_actual, 2);
+        $residual_sum_squares += pow($data['predictions'][$i] - $data['actuals'][$i], 2);
+    }
+    $r2 = 1 - ($residual_sum_squares / $total_sum_squares);
+    
+    $metrics[$model_name] = ['mse' => $mse, 'mae' => $mae, 'r2_score' => $r2];
+}
+
+// Prepare data for charts
+$chart_labels = array_keys($metrics);
+$mse_data = array_column($metrics, 'mse');
+$mae_data = array_column($metrics, 'mae');
+$r2_data = array_column($metrics, 'r2_score');
+
 ?>
 
 <!DOCTYPE html>
@@ -32,7 +81,7 @@ $metrics = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
         <!-- Model Comparison Section -->
         <div class="bg-gray-800 rounded-lg p-6 mb-8">
-            <h2 class="text-2xl font-semibold mb-4">Perbandingan Performa Model</h2>
+            <h2 class="text-2xl font-semibold mb-4">Perbandingan Performa Model (dari Data Prediksi Anda)</h2>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
                     <canvas id="metricsChart"></canvas>
@@ -56,6 +105,7 @@ $metrics = $stmt->fetchAll(PDO::FETCH_ASSOC);
                             <th class="px-6 py-3">Jumlah Kamar</th>
                             <th class="px-6 py-3">Tipe</th>
                             <th class="px-6 py-3">Prediksi Harga</th>
+                            <th class="px-6 py-3">Harga Aktual</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -67,6 +117,7 @@ $metrics = $stmt->fetchAll(PDO::FETCH_ASSOC);
                             <td class="px-6 py-4"><?= $pred['num_rooms'] ?></td>
                             <td class="px-6 py-4"><?= $pred['apartment_type'] ?></td>
                             <td class="px-6 py-4">Rp <?= number_format($pred['predicted_price'], 0, ',', '.') ?></td>
+                            <td class="px-6 py-4"><?= $pred['actual_price'] ? 'Rp ' . number_format($pred['actual_price'], 0, ',', '.') : 'N/A' ?></td>
                         </tr>
                         <?php endforeach; ?>
                     </tbody>
@@ -77,26 +128,28 @@ $metrics = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
     <script>
         // Prepare data for charts
-        const metrics = <?= json_encode($metrics) ?>;
-        const models = ['DT', 'RF', 'KNN'];
+        const chartLabels = <?= json_encode($chart_labels) ?>;
+        const mseData = <?= json_encode($mse_data) ?>;
+        const maeData = <?= json_encode($mae_data) ?>;
+        const r2Data = <?= json_encode($r2_data) ?>;
         
         // MSE and MAE Chart
         const metricsCtx = document.getElementById('metricsChart').getContext('2d');
         new Chart(metricsCtx, {
             type: 'bar',
             data: {
-                labels: models,
+                labels: chartLabels,
                 datasets: [
                     {
                         label: 'MSE',
-                        data: models.map(model => metrics.find(m => m.model_name === model)?.mse || 0),
+                        data: mseData,
                         backgroundColor: 'rgba(255, 99, 132, 0.5)',
                         borderColor: 'rgba(255, 99, 132, 1)',
                         borderWidth: 1
                     },
                     {
                         label: 'MAE',
-                        data: models.map(model => metrics.find(m => m.model_name === model)?.mae || 0),
+                        data: maeData,
                         backgroundColor: 'rgba(54, 162, 235, 0.5)',
                         borderColor: 'rgba(54, 162, 235, 1)',
                         borderWidth: 1
@@ -144,10 +197,10 @@ $metrics = $stmt->fetchAll(PDO::FETCH_ASSOC);
         new Chart(r2Ctx, {
             type: 'bar',
             data: {
-                labels: models,
+                labels: chartLabels,
                 datasets: [{
                     label: 'R² Score',
-                    data: models.map(model => metrics.find(m => m.model_name === model)?.r2_score || 0),
+                    data: r2Data,
                     backgroundColor: 'rgba(75, 192, 192, 0.5)',
                     borderColor: 'rgba(75, 192, 192, 1)',
                     borderWidth: 1
@@ -189,6 +242,7 @@ $metrics = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 }
             }
         });
+
     </script>
 </body>
 </html> 

@@ -22,6 +22,10 @@
 </head>
 <body class="min-h-screen text-white flex flex-col">
 
+<?php if ($_SERVER['REQUEST_METHOD'] == 'POST'): ?>
+<div id="post-submit-flag" data-submitted="true"></div>
+<?php endif; ?>
+
 <!-- Welcome screen -->
 <div id="welcome" class="fixed inset-0 z-50 bg-black flex flex-col items-center justify-center text-center text-white">
   <img src="https://cdn-icons-png.flaticon.com/512/1933/1933005.png" alt="Apartment" class="w-24 h-24 mb-4 animate-bounce">
@@ -142,34 +146,65 @@
                       $cmd = "python predict.py $model csv " . escapeshellarg($file_path);
                       $output = shell_exec($cmd);
                       
-                      // Save predictions to database
+                      // Save predictions and actual prices to database
                       require_once 'config/database.php';
                       
-                      // Read CSV file
-                      $file = fopen($file_path, 'r');
-                      $headers = fgetcsv($file); // Skip header row
+                      // Get predictions and actual prices from python output
+                      $results = explode("\n", trim($output));
                       
-                      while (($row = fgetcsv($file)) !== FALSE) {
-                          $stmt = $pdo->prepare("INSERT INTO predictions (metro_minutes, area, living_area, kitchen_area, floor, num_floors, num_rooms, apartment_type, renovation, predicted_price, model_used) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-                          $stmt->execute([
-                              $row[0], // Minutes to metro
-                              $row[1], // Area
-                              $row[2], // Living area
-                              $row[3], // Kitchen area
-                              $row[4], // Floor
-                              $row[5], // Number of floors
-                              $row[6], // Number of rooms
-                              $row[7], // Apartment type
-                              $row[8], // Renovation
-                              $output,
-                              $_POST['model']
-                          ]);
+                      // Assuming each result line is "predicted_price,actual_price"
+                      foreach ($results as $line) {
+                          $values = explode(",", $line);
+                          if (count($values) == 2) {
+                              $predicted_price = (float) $values[0];
+                              $actual_price = (float) $values[1];
+                              
+                              // We need the original data to insert into the database
+                              // This requires re-reading the CSV or getting data from Python.
+                              // Re-reading CSV is simpler for now, but less efficient for large files.
+                              // A more robust solution would involve Python returning the full row data + predictions.
+                              // For simplicity, let's assume we can re-read the CSV and match based on order.
+                              // NOTE: This assumes the order of predictions from Python matches the order in the CSV.
+                              // If the order is not guaranteed, a different approach is needed.
+                              
+                              // *** This part needs careful implementation to match predictions with original data ***
+                              // Re-reading the CSV for simplicity in this edit
+                              
+                              $file = fopen($file_path, 'r');
+                              $headers = fgetcsv($file); // Skip header row
+                              $i = 0;
+                              while (($row_data = fgetcsv($file)) !== FALSE) {
+                                  if ($i == key($results)) { // Match by index (assuming order is preserved)
+                                        $stmt = $pdo->prepare("INSERT INTO predictions (metro_minutes, area, living_area, kitchen_area, floor, num_floors, num_rooms, apartment_type, renovation, predicted_price, actual_price, model_used) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                                        $stmt->execute([
+                                            $row_data[0], // Minutes to metro
+                                            $row_data[1], // Area
+                                            $row_data[2], // Living area
+                                            $row_data[3], // Kitchen area
+                                            $row_data[4], // Floor
+                                            $row_data[5], // Number of floors
+                                            $row_data[6], // Number of rooms
+                                            $row_data[7], // Apartment type
+                                            $row_data[8], // Renovation
+                                            $predicted_price,
+                                            $actual_price,
+                                            $_POST['model']
+                                        ]);
+                                      break; // Found the matching row, move to next prediction
+                                  }
+                                  $i++;
+                              }
+                              fclose($file);
+                              next($results); // Move the internal pointer to the next element
+
+                          } else {
+                              // Handle error if output line is not in expected format
+                              error_log("Unexpected Python output format: " . $line);
+                          }
                       }
-                      fclose($file);
                       
                       echo "<div class='mt-4 bg-green-800 text-green-100 p-4 rounded'>
-                              <strong>Hasil Prediksi dari File CSV:</strong><br>
-                              <pre class='mt-2'>$output</pre>
+                              <strong>Proses Prediksi Selesai. Hasil prediksi dan harga aktual tersimpan di History.</strong>
                             </div>";
                   } else {
                       echo "<div class='mt-4 bg-red-800 text-red-100 p-4 rounded'>
@@ -222,7 +257,7 @@
 
               // Save prediction to database
               require_once 'config/database.php';
-              $stmt = $pdo->prepare("INSERT INTO predictions (metro_minutes, area, living_area, kitchen_area, floor, num_floors, num_rooms, apartment_type, renovation, predicted_price, model_used) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+              $stmt = $pdo->prepare("INSERT INTO predictions (metro_minutes, area, living_area, kitchen_area, floor, num_floors, num_rooms, apartment_type, renovation, predicted_price, actual_price, model_used) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
               $stmt->execute([
                   $_POST['metro'],
                   $_POST['area'],
@@ -233,7 +268,8 @@
                   $_POST['num_rooms'],
                   $_POST['apt_type'],
                   $_POST['renovation'],
-                  $output,
+                  $output, // predicted price
+                  NULL, // No actual price for manual input
                   $_POST['model']
               ]);
 
@@ -266,9 +302,16 @@
 <script>
   // Welcome screen fade out
   window.addEventListener("load", () => {
-    setTimeout(() => {
+    const postSubmitFlag = document.getElementById('post-submit-flag');
+    if (postSubmitFlag && postSubmitFlag.dataset.submitted === 'true') {
+      // If page loaded after a POST submission, hide welcome screen instantly
       document.getElementById("welcome").classList.add("hidden");
-    }, 2000);
+    } else {
+      // Otherwise, show welcome screen and fade out after delay
+      setTimeout(() => {
+        document.getElementById("welcome").classList.add("hidden");
+      }, 2000);
+    }
   });
 </script>
 

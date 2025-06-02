@@ -46,29 +46,25 @@ def predict_from_csv(file_path, model):
         df = pd.read_csv(file_path)
         validate_csv_data(df)
         
-        # Ensure columns are in correct order
-        df = df[columns]
+        # Ensure columns are in correct order for prediction
+        df_features = df[columns]
         
-        predictions = model.predict(df)
-        results = []
+        predictions = model.predict(df_features)
         
-        for i, (_, row) in enumerate(df.iterrows(), 1):
-            price = predictions[i-1]
-            results.append(f"Data {i}:\n" + 
-                         f"Menit ke Transportasi Umum: {row['Minutes to metro']}\n" +
-                         f"Luas Total: {row['Area']} m²\n" +
-                         f"Luas Ruang Tamu & Kamar Tidur: {row['Living area']} m²\n" +
-                         f"Luas Dapur: {row['Kitchen area']} m²\n" +
-                         f"Lantai: {row['Floor']}\n" +
-                         f"Jumlah Lantai Gedung: {row['Number of floors']}\n" +
-                         f"Jumlah Kamar: {row['Number of rooms']}\n" +
-                         f"Tipe Apartemen: {row['Apartment type']}\n" +
-                         f"Renovasi: {row['Renovation']}\n" +
-                         f"Prediksi Harga: Rp {price:,.0f}\n")
+        # Check if 'Price' column exists for actual prices
+        if 'Price' not in df.columns:
+            print("ERROR: Kolom 'Price' (harga aktual) tidak ditemukan dalam file CSV.")
+            sys.exit(1)
+            
+        actual_prices = df['Price'].tolist()
         
-        return "\n".join(results)
+        # Print predictions and actual prices, comma-separated
+        for i in range(len(predictions)):
+            print(f"{predictions[i]},{actual_prices[i]}")
+        
     except Exception as e:
-        raise ValueError(f"Error dalam memproses file CSV: {str(e)}")
+        print(f"ERROR: Error dalam memproses file CSV: {str(e)}")
+        sys.exit(1)
 
 def predict_from_args(args, model):
     numeric = list(map(float, args[:7]))
@@ -87,8 +83,7 @@ if __name__ == '__main__':
             file_path = sys.argv[3]
             if not os.path.exists(file_path):
                 raise ValueError(f"File tidak ditemukan: {file_path}")
-            result = predict_from_csv(file_path, model)
-            print(result)
+            predict_from_csv(file_path, model)
         else:
             args = sys.argv[3:]
             pred = predict_from_args(args, model)
