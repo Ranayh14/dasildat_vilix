@@ -5,58 +5,6 @@ require_once 'config/database.php';
 $stmt = $pdo->query("SELECT * FROM predictions ORDER BY prediction_date DESC LIMIT 50");
 $predictions = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-// Get data for calculating metrics
-$stmt = $pdo->query("SELECT predicted_price, actual_price, model_used FROM predictions WHERE actual_price IS NOT NULL");
-$metric_data = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-// Calculate metrics per model
-$metrics = [];
-$model_data = [];
-foreach ($metric_data as $row) {
-    if (!isset($model_data[$row['model_used']])) {
-        $model_data[$row['model_used']] = ['predictions' => [], 'actuals' => []];
-    }
-    $model_data[$row['model_used']]['predictions'][] = (float) $row['predicted_price'];
-    $model_data[$row['model_used']]['actuals'][] = (float) $row['actual_price'];
-}
-
-foreach ($model_data as $model_name => $data) {
-    $n = count($data['predictions']);
-    if ($n == 0) continue;
-
-    // Calculate MSE
-    $mse = 0;
-    for ($i = 0; $i < $n; $i++) {
-        $mse += pow($data['predictions'][$i] - $data['actuals'][$i], 2);
-    }
-    $mse /= $n;
-
-    // Calculate MAE
-    $mae = 0;
-    for ($i = 0; $i < $n; $i++) {
-        $mae += abs($data['predictions'][$i] - $data['actuals'][$i]);
-    }
-    $mae /= $n;
-
-    // Calculate R2 Score
-    $mean_actual = array_sum($data['actuals']) / $n;
-    $total_sum_squares = 0;
-    $residual_sum_squares = 0;
-    for ($i = 0; $i < $n; $i++) {
-        $total_sum_squares += pow($data['actuals'][$i] - $mean_actual, 2);
-        $residual_sum_squares += pow($data['predictions'][$i] - $data['actuals'][$i], 2);
-    }
-    $r2 = 1 - ($residual_sum_squares / $total_sum_squares);
-    
-    $metrics[$model_name] = ['mse' => $mse, 'mae' => $mae, 'r2_score' => $r2];
-}
-
-// Prepare data for charts
-$chart_labels = array_keys($metrics);
-$mse_data = array_column($metrics, 'mse');
-$mae_data = array_column($metrics, 'mae');
-$r2_data = array_column($metrics, 'r2_score');
-
 ?>
 
 <!DOCTYPE html>
@@ -75,23 +23,10 @@ $r2_data = array_column($metrics, 'r2_score');
         }
     </style>
 </head>
-<body class="min-h-screen text-white">
+<body class="min-h-screen flex flex-col text-white">
     <?php include 'components/header.php'; ?>
-    <div class="container mx-auto px-4 py-8">
+    <div class="container mx-auto px-4 py-8 flex-1">
         <h1 class="text-3xl font-bold mb-8 text-center">History Prediksi & Perbandingan Model</h1>
-
-        <!-- Model Comparison Section -->
-        <div class="bg-gray-800 rounded-lg p-6 mb-8">
-            <h2 class="text-2xl font-semibold mb-4">Perbandingan Performa Model (dari Data Prediksi Anda)</h2>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                    <canvas id="metricsChart"></canvas>
-                </div>
-                <div>
-                    <canvas id="r2Chart"></canvas>
-                </div>
-            </div>
-        </div>
 
         <!-- Prediction History Section -->
         <div class="bg-gray-800 rounded-lg p-6">
@@ -100,25 +35,35 @@ $r2_data = array_column($metrics, 'r2_score');
                 <table class="w-full text-sm text-left text-gray-300">
                     <thead class="text-xs uppercase bg-gray-700">
                         <tr>
-                            <th class="px-6 py-3">Tanggal</th>
-                            <th class="px-6 py-3">Model</th>
-                            <th class="px-6 py-3">Luas Total</th>
-                            <th class="px-6 py-3">Jumlah Kamar</th>
-                            <th class="px-6 py-3">Tipe</th>
-                            <th class="px-6 py-3">Prediksi Harga</th>
-                            <th class="px-6 py-3">Harga Aktual</th>
+                            <th class="px-4 py-3">Tanggal</th>
+                            <th class="px-4 py-3">Model</th>
+                            <th class="px-4 py-3">Menit ke Trans. Umum</th>
+                            <th class="px-4 py-3">Luas Total</th>
+                            <th class="px-4 py-3">Luas R. Tamu & K. Tidur</th>
+                            <th class="px-4 py-3">Luas Dapur</th>
+                            <th class="px-4 py-3">Lantai</th>
+                            <th class="px-4 py-3">Jumlah Lantai</th>
+                            <th class="px-4 py-3">Jumlah Kamar</th>
+                            <th class="px-4 py-3">Tipe</th>
+                            <th class="px-4 py-3">Renovasi</th>
+                            <th class="px-4 py-3">Prediksi Harga</th>
                         </tr>
                     </thead>
                     <tbody>
                         <?php foreach ($predictions as $pred): ?>
                         <tr class="border-b border-gray-700">
-                            <td class="px-6 py-4"><?= date('d/m/Y H:i', strtotime($pred['prediction_date'])) ?></td>
-                            <td class="px-6 py-4"><?= $pred['model_used'] ?></td>
-                            <td class="px-6 py-4"><?= $pred['area'] ?> m²</td>
-                            <td class="px-6 py-4"><?= $pred['num_rooms'] ?></td>
-                            <td class="px-6 py-4"><?= $pred['apartment_type'] ?></td>
-                            <td class="px-6 py-4">Rp <?= number_format($pred['predicted_price'], 0, ',', '.') ?></td>
-                            <td class="px-6 py-4"><?= $pred['actual_price'] ? 'Rp ' . number_format($pred['actual_price'], 0, ',', '.') : 'N/A' ?></td>
+                            <td class="px-4 py-3"><?= date('d/m/Y H:i', strtotime($pred['prediction_date'])) ?></td>
+                            <td class="px-4 py-3"><?= $pred['model_used'] ?></td>
+                            <td class="px-4 py-3"><?= $pred['metro_minutes'] ?></td>
+                            <td class="px-4 py-3"><?= $pred['area'] ?> m²</td>
+                            <td class="px-4 py-3"><?= $pred['living_area'] ?> m²</td>
+                            <td class="px-4 py-3"><?= $pred['kitchen_area'] ?> m²</td>
+                            <td class="px-4 py-3"><?= $pred['floor'] ?></td>
+                            <td class="px-4 py-3"><?= $pred['num_floors'] ?></td>
+                            <td class="px-4 py-3"><?= $pred['num_rooms'] ?></td>
+                            <td class="px-4 py-3"><?= $pred['apartment_type'] ?></td>
+                            <td class="px-4 py-3"><?= $pred['renovation'] ?></td>
+                            <td class="px-4 py-3">Rp <?= number_format($pred['predicted_price'], 0, ',', '.') ?></td>
                         </tr>
                         <?php endforeach; ?>
                     </tbody>
@@ -126,128 +71,8 @@ $r2_data = array_column($metrics, 'r2_score');
             </div>
         </div>
     </div>
-    <div class="bottom-0 w-full mt-20">
-        <?php include 'components/footer.php'; ?>
-    </div>
+    <?php include 'components/footer.php'; ?>
 
 
-    <script>
-        // Prepare data for charts
-        const chartLabels = <?= json_encode($chart_labels) ?>;
-        const mseData = <?= json_encode($mse_data) ?>;
-        const maeData = <?= json_encode($mae_data) ?>;
-        const r2Data = <?= json_encode($r2_data) ?>;
-        
-        // MSE and MAE Chart
-        const metricsCtx = document.getElementById('metricsChart').getContext('2d');
-        new Chart(metricsCtx, {
-            type: 'bar',
-            data: {
-                labels: chartLabels,
-                datasets: [
-                    {
-                        label: 'MSE',
-                        data: mseData,
-                        backgroundColor: 'rgba(255, 99, 132, 0.5)',
-                        borderColor: 'rgba(255, 99, 132, 1)',
-                        borderWidth: 1
-                    },
-                    {
-                        label: 'MAE',
-                        data: maeData,
-                        backgroundColor: 'rgba(54, 162, 235, 0.5)',
-                        borderColor: 'rgba(54, 162, 235, 1)',
-                        borderWidth: 1
-                    }
-                ]
-            },
-            options: {
-                responsive: true,
-                plugins: {
-                    title: {
-                        display: true,
-                        text: 'Perbandingan MSE dan MAE',
-                        color: 'white'
-                    },
-                    legend: {
-                        labels: {
-                            color: 'white'
-                        }
-                    }
-                },
-                scales: {
-                    y: {
-                        beginAtZero: true,
-                        ticks: {
-                            color: 'white'
-                        },
-                        grid: {
-                            color: 'rgba(255, 255, 255, 0.1)'
-                        }
-                    },
-                    x: {
-                        ticks: {
-                            color: 'white'
-                        },
-                        grid: {
-                            color: 'rgba(255, 255, 255, 0.1)'
-                        }
-                    }
-                }
-            }
-        });
-
-        // R² Score Chart
-        const r2Ctx = document.getElementById('r2Chart').getContext('2d');
-        new Chart(r2Ctx, {
-            type: 'bar',
-            data: {
-                labels: chartLabels,
-                datasets: [{
-                    label: 'R² Score',
-                    data: r2Data,
-                    backgroundColor: 'rgba(75, 192, 192, 0.5)',
-                    borderColor: 'rgba(75, 192, 192, 1)',
-                    borderWidth: 1
-                }]
-            },
-            options: {
-                responsive: true,
-                plugins: {
-                    title: {
-                        display: true,
-                        text: 'Perbandingan R² Score',
-                        color: 'white'
-                    },
-                    legend: {
-                        labels: {
-                            color: 'white'
-                        }
-                    }
-                },
-                scales: {
-                    y: {
-                        beginAtZero: true,
-                        max: 1,
-                        ticks: {
-                            color: 'white'
-                        },
-                        grid: {
-                            color: 'rgba(255, 255, 255, 0.1)'
-                        }
-                    },
-                    x: {
-                        ticks: {
-                            color: 'white'
-                        },
-                        grid: {
-                            color: 'rgba(255, 255, 255, 0.1)'
-                        }
-                    }
-                }
-            }
-        });
-
-    </script>
 </body>
 </html> 

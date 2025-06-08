@@ -1,8 +1,56 @@
-<?php include 'components/header.php'; ?>
+<?php include 'components/header.php'; 
+require_once 'config/database.php';
 
+// Define metrics for each model
+$metrics = [
+    'DT' => [
+        'mse' => 16636768949153.031,
+        'r2_score' => 0.825260589647193
+    ],
+    'KNN' => [
+        'mse' => 12660001757974.5,
+        'r2_score' => 0.8670293944085466
+    ],
+    'RF' => [
+        'mse' => 11202372803816.945,
+        'r2_score' => 0.8823391714897291
+    ]
+];
+
+?>
+
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>History Prediksi & Perbandingan Model</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://unpkg.com/flowbite@1.6.5/dist/flowbite.min.css" rel="stylesheet" />
+    <script src="https://unpkg.com/flowbite@1.6.5/dist/flowbite.min.js"></script>
+    <style>
+        body {
+            background: linear-gradient(to right, #0f2027, #203a43, #2c5364);
+        }
+    </style>
+</head>
 <main class="flex-grow fade-in">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <h1 class="text-4xl font-bold text-white mb-8 text-center">Model Machine Learning</h1>
+
+        <!-- Model Comparison Section -->
+        <div class="bg-gray-800 rounded-lg p-6 mb-8">
+            <h2 class="text-2xl font-semibold mb-4">Perbandingan Performa Model</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                    <canvas id="mseChart"></canvas>
+                </div>
+                <div>
+                    <canvas id="r2Chart"></canvas>
+                </div>
+            </div>
+        </div>
 
         <!-- Decision Tree Section -->
         <div class="bg-gray-800 rounded-lg p-8 mb-8">
@@ -98,3 +146,122 @@
 </main>
 
 <?php include 'components/footer.php'; ?> 
+
+    <script>
+        // Prepare data for charts
+        const modelLabels = ['Decision Tree', 'KNN', 'Random Forest'];
+        const mseData = [
+            <?= $metrics['DT']['mse'] ?>,
+            <?= $metrics['KNN']['mse'] ?>,
+            <?= $metrics['RF']['mse'] ?>
+        ];
+        const r2Data = [
+            <?= $metrics['DT']['r2_score'] ?>,
+            <?= $metrics['KNN']['r2_score'] ?>,
+            <?= $metrics['RF']['r2_score'] ?>
+        ];
+        
+        // MSE Chart
+        const mseCtx = document.getElementById('mseChart').getContext('2d');
+        new Chart(mseCtx, {
+            type: 'bar',
+            data: {
+                labels: modelLabels,
+                datasets: [{
+                    label: 'Mean Squared Error (MSE)',
+                    data: mseData,
+                    backgroundColor: 'rgba(255, 99, 132, 0.5)',
+                    borderColor: 'rgba(255, 99, 132, 1)',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    title: {
+                        display: true,
+                        text: 'Perbandingan MSE',
+                        color: 'white'
+                    },
+                    legend: {
+                        labels: {
+                            color: 'white'
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            color: 'white',
+                            callback: function(value) {
+                                return (value / 1e12).toFixed(2) + ' T';
+                            }
+                        },
+                        grid: {
+                            color: 'rgba(255, 255, 255, 0.1)'
+                        }
+                    },
+                    x: {
+                        ticks: {
+                            color: 'white'
+                        },
+                        grid: {
+                            color: 'rgba(255, 255, 255, 0.1)'
+                        }
+                    }
+                }
+            }
+        });
+
+        // R² Score Chart
+        const r2Ctx = document.getElementById('r2Chart').getContext('2d');
+        new Chart(r2Ctx, {
+            type: 'bar',
+            data: {
+                labels: modelLabels,
+                datasets: [{
+                    label: 'R² Score',
+                    data: r2Data,
+                    backgroundColor: 'rgba(75, 192, 192, 0.5)',
+                    borderColor: 'rgba(75, 192, 192, 1)',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    title: {
+                        display: true,
+                        text: 'Perbandingan R² Score',
+                        color: 'white'
+                    },
+                    legend: {
+                        labels: {
+                            color: 'white'
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        min: 0.8,
+                        max: 0.9,
+                        ticks: {
+                            color: 'white'
+                        },
+                        grid: {
+                            color: 'rgba(255, 255, 255, 0.1)'
+                        }
+                    },
+                    x: {
+                        ticks: {
+                            color: 'white'
+                        },
+                        grid: {
+                            color: 'rgba(255, 255, 255, 0.1)'
+                        }
+                    }
+                }
+            }
+        });
+    </script>

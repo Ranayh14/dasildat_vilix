@@ -129,20 +129,38 @@
                     $_POST['model']
                 ]);
 
-                // Tampilkan data input
-                echo "<div class='mt-6 bg-gray-800 text-gray-100 p-4 rounded'>
-                        <h4 class='text-lg font-semibold mb-2'>Data Input:</h4>
-                        <ul class='list-disc pl-5 space-y-1'>";
-                foreach ($data_input as $key => $value) {
-                    echo "<li><strong>$key:</strong> $value</li>";
-                }
-                echo "  </ul>
-                      </div>";
-
-                // Tampilkan hasil prediksi
-                echo "<div class='mt-4 bg-green-800 text-green-100 p-4 rounded'>
-                        <strong>Hasil Prediksi Harga:</strong> Rp " . number_format($output, 0, ',', '.') . "
-                      </div>";
+                // Tampilkan data input dan hasil prediksi dalam card yang lebih menarik
+                echo "<div class='mt-8 bg-gray-800 rounded-lg overflow-hidden'>
+                        <div class='bg-gray-700 px-6 py-4'>
+                            <h3 class='text-xl font-bold text-white'>Hasil Prediksi</h3>
+                        </div>
+                        <div class='p-6 space-y-6'>
+                            <!-- Data Input -->
+                            <div class='grid grid-cols-1 md:grid-cols-2 gap-6'>
+                                <div>
+                                    <h4 class='text-lg font-semibold text-white mb-4'>Data Input:</h4>
+                                    <div class='space-y-3'>";
+                                    foreach ($data_input as $key => $value) {
+                                        echo "<div class='flex justify-between items-center border-b border-gray-700 pb-2'>
+                                                <span class='text-gray-400'>$key:</span>
+                                                <span class='text-white font-medium'>$value</span>
+                                            </div>";
+                                    }
+                echo "          </div>
+                                </div>
+                                <!-- Hasil Prediksi -->
+                                <div class='bg-gray-900 rounded-lg p-6 flex flex-col justify-center items-center'>
+                                    <h4 class='text-lg font-semibold text-white mb-4'>Prediksi Harga:</h4>
+                                    <div class='text-3xl font-bold text-green-500'>
+                                        Rp " . number_format($output, 0, ',', '.') . "
+                                    </div>
+                                    <p class='text-gray-400 mt-2 text-sm'>
+                                        *Hasil prediksi berdasarkan model " . $data_input['Model yang Dipilih'] . "
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>";
             }
             ?>
         </div>
