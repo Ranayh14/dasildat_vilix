@@ -76,6 +76,7 @@ $r2_data = array_column($metrics, 'r2_score');
     </style>
 </head>
 <body class="min-h-screen text-white">
+    <?php include 'components/header.php'; ?>
     <div class="container mx-auto px-4 py-8">
         <h1 class="text-3xl font-bold mb-8 text-center">History Prediksi & Perbandingan Model</h1>
 
@@ -125,6 +126,10 @@ $r2_data = array_column($metrics, 'r2_score');
             </div>
         </div>
     </div>
+    <div class="bottom-0 w-full mt-20">
+        <?php include 'components/footer.php'; ?>
+    </div>
+
 
     <script>
         // Prepare data for charts
