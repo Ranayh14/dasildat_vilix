@@ -53,7 +53,7 @@
                         <tr>
                             <td class="border px-4 py-2">num_rooms</td>
                             <td class="border px-4 py-2">Numerik</td>
-                            <td class="border px-4 py-2">Jumlah kamar</td>
+                            <td class="border px-4 py-2">Jumlah kamar tidur</td>
                         </tr>
                         <tr>
                             <td class="border px-4 py-2">apartment_type</td>
@@ -65,11 +65,6 @@
                             <td class="border px-4 py-2">Text</td>
                             <td class="border px-4 py-2">"yes" atau "no"</td>
                         </tr>
-                        <tr>
-                            <td class="border px-4 py-2">actual_price</td>
-                            <td class="border px-4 py-2">Numerik</td>
-                            <td class="border px-4 py-2">Harga aktual (opsional)</td>
-                        </tr>
                     </tbody>
                 </table>
             </div>
@@ -77,9 +72,9 @@
             <div class="mt-4">
                 <h5 class="font-semibold text-white mb-2">Contoh isi file CSV:</h5>
                 <pre class="bg-gray-900 p-4 rounded text-gray-300 overflow-x-auto">
-metro_minutes,area,living_area,kitchen_area,floor,num_floors,num_rooms,apartment_type,renovation,actual_price
-15,65.5,40.2,12.3,5,12,3,New building,yes,850000
-20,48.0,32.5,8.5,3,9,2,Secondary,no,620000</pre>
+metro_minutes,area,living_area,kitchen_area,floor,num_floors,num_rooms,apartment_type,renovation
+15,65.5,40.2,12.3,5,12,1,New building,yes
+20,48.0,32.5,8.5,3,9,2,Secondary,no</pre>
             </div>
         </div>
 
@@ -132,53 +127,82 @@ metro_minutes,area,living_area,kitchen_area,floor,num_floors,num_rooms,apartment
                             $cmd = "python predict.py $model csv " . escapeshellarg($file_path);
                             $output = shell_exec($cmd);
                             
-                            // Save predictions and actual prices to database
+                            if (strpos($output, 'ERROR') !== false) {
+                                echo "<div class='mt-4 bg-red-800 text-red-100 p-4 rounded'>
+                                        <strong>Error:</strong> " . htmlspecialchars($output) . "
+                                      </div>";
+                                unlink($file_path); // Delete the uploaded file
+                                exit;
+                            }
+                            
+                            // Save predictions to database
                             require_once 'config/database.php';
                             
-                            // Get predictions and actual prices from python output
-                            $results = explode("\n", trim($output));
+                            // Get predictions from python output
+                            $predictions = array_filter(explode("\n", trim($output))); // Remove empty lines
+                            $num_predictions = count($predictions);
                             
-                            // Assuming each result line is "predicted_price,actual_price"
-                            foreach ($results as $line) {
-                                $values = explode(",", $line);
-                                if (count($values) == 2) {
-                                    $predicted_price = (float) $values[0];
-                                    $actual_price = (float) $values[1];
+                            if ($num_predictions == 0) {
+                                echo "<div class='mt-4 bg-red-800 text-red-100 p-4 rounded'>
+                                        <strong>Error:</strong> Tidak ada prediksi yang dihasilkan
+                                      </div>";
+                                unlink($file_path); // Delete the uploaded file
+                                exit;
+                            }
+                            
+                            // Create new CSV prediction record
+                            $stmt = $pdo->prepare("INSERT INTO csv_predictions (file_name, num_predictions, model_used) VALUES (?, ?, ?)");
+                            $stmt->execute([
+                                basename($file['name']),
+                                $num_predictions,
+                                $_POST['model']
+                            ]);
+                            $csv_prediction_id = $pdo->lastInsertId();
+                            
+                            // Re-reading the CSV for input data
+                            $file = fopen($file_path, 'r');
+                            $headers = fgetcsv($file); // Skip header row
+                            
+                            foreach ($predictions as $i => $prediction) {
+                                $row_data = fgetcsv($file);
+                                if ($row_data) {
+                                    $stmt = $pdo->prepare("INSERT INTO csv_prediction_details (
+                                        csv_prediction_id, metro_minutes, area, living_area, kitchen_area, 
+                                        floor, num_floors, num_rooms, apartment_type, renovation, predicted_price
+                                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
                                     
-                                    // Re-reading the CSV for simplicity
-                                    $file = fopen($file_path, 'r');
-                                    $headers = fgetcsv($file); // Skip header row
-                                    $i = 0;
-                                    while (($row_data = fgetcsv($file)) !== FALSE) {
-                                        if ($i == key($results)) {
-                                            $stmt = $pdo->prepare("INSERT INTO predictions (metro_minutes, area, living_area, kitchen_area, floor, num_floors, num_rooms, apartment_type, renovation, predicted_price, actual_price, model_used) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-                                            $stmt->execute([
-                                                $row_data[0], // Minutes to metro
-                                                $row_data[1], // Area
-                                                $row_data[2], // Living area
-                                                $row_data[3], // Kitchen area
-                                                $row_data[4], // Floor
-                                                $row_data[5], // Number of floors
-                                                $row_data[6], // Number of rooms
-                                                $row_data[7], // Apartment type
-                                                $row_data[8], // Renovation
-                                                $predicted_price,
-                                                $actual_price,
-                                                $_POST['model']
-                                            ]);
-                                            break;
-                                        }
-                                        $i++;
-                                    }
-                                    fclose($file);
-                                    next($results);
+                                    $stmt->execute([
+                                        $csv_prediction_id,
+                                        $row_data[0], // Minutes to metro
+                                        $row_data[1], // Area
+                                        $row_data[2], // Living area
+                                        $row_data[3], // Kitchen area
+                                        $row_data[4], // Floor
+                                        $row_data[5], // Number of floors
+                                        $row_data[6], // Number of rooms
+                                        $row_data[7], // Apartment type
+                                        $row_data[8], // Renovation
+                                        (float)$prediction // predicted_price
+                                    ]);
                                 }
                             }
+                            fclose($file);
+                            
+                            // Delete the uploaded file
+                            unlink($file_path);
                             
                             echo "<div class='mt-4 bg-green-800 text-green-100 p-4 rounded'>
                                     <strong>Proses Prediksi Selesai!</strong><br>
-                                    Hasil prediksi dan harga aktual telah tersimpan di History.
+                                    Berhasil memprediksi " . $num_predictions . " data.<br>
+                                    Hasil prediksi telah tersimpan di History.
                                   </div>";
+                                  
+                            // Redirect to detail page
+                            echo "<script>
+                                    setTimeout(function() {
+                                        window.location.href = 'csv_prediction_detail.php?id=" . $csv_prediction_id . "';
+                                    }, 2000);
+                                  </script>";
                         } else {
                             echo "<div class='mt-4 bg-red-800 text-red-100 p-4 rounded'>
                                     <strong>Error:</strong> Gagal mengupload file

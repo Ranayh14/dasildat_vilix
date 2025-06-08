@@ -113,7 +113,7 @@
 
                 // Save prediction to database
                 require_once 'config/database.php';
-                $stmt = $pdo->prepare("INSERT INTO predictions (metro_minutes, area, living_area, kitchen_area, floor, num_floors, num_rooms, apartment_type, renovation, predicted_price, actual_price, model_used) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                $stmt = $pdo->prepare("INSERT INTO predictions (metro_minutes, area, living_area, kitchen_area, floor, num_floors, num_rooms, apartment_type, renovation, predicted_price, model_used) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
                 $stmt->execute([
                     $_POST['metro'],
                     $_POST['area'],
@@ -125,7 +125,6 @@
                     $_POST['apt_type'],
                     $_POST['renovation'],
                     $output, // predicted price
-                    NULL, // No actual price for manual input
                     $_POST['model']
                 ]);
 
